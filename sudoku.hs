@@ -1,4 +1,10 @@
+-- Compile for faster performances:
+--    ghc -O2 sudoku.hs
+
 import Data.List (transpose, (\\))
+
+main :: IO ()
+main = putStrLn (unlines (head (solve4 minimal)))
 
 type Grid = Matrix Value
 
@@ -7,6 +13,8 @@ type Matrix a = [Row a]
 type Row a = [a]
 
 type Value = Char
+
+type Choises = [Value]
 
 blank :: Grid
 blank = replicate 9 (replicate 9 '.')
@@ -49,6 +57,32 @@ diabolical =
     "......1.9",
     ".2.6..35.",
     ".54..8.7."
+  ]
+
+unsolvable :: Grid
+unsolvable =
+  [ "1..9.7..3",
+    ".8.....7.",
+    "..9...6..",
+    "..72.94..",
+    "41.....95",
+    "..85.43..",
+    "..3...7..",
+    ".5.....4.",
+    "2..8.6..9"
+  ]
+
+minimal :: Grid
+minimal =
+  [ ".98......",
+    "....7....",
+    "....15...",
+    "1........",
+    "...2....9",
+    "...9.6.82",
+    ".......3.",
+    "5.1......",
+    "...4...2."
   ]
 
 boxsize :: Int
@@ -101,7 +135,8 @@ solve2 = filter valid . explode . prune . choises
 solve3 :: Grid -> [Grid]
 solve3 = filter valid . explode . fix prune . choises
 
-type Choises = [Value]
+solve4 :: Grid -> [Grid]
+solve4 = search . prune . choises
 
 choises :: Grid -> Matrix Choises
 choises = map (map choise)
@@ -115,7 +150,7 @@ cartesianProduct :: [[a]] -> [[a]]
 cartesianProduct [] = [[]]
 cartesianProduct (xs : xss) = [y : ys | y <- xs, ys <- cartesianProduct xss]
 
--- generate a list of matrix with the combination of possible values
+-- Generate a list of matrix with the combination of possible values
 explode :: Matrix [a] -> [Matrix a]
 explode m = cartesianProduct (map cartesianProduct m) -- TO EXPLAIN
 
@@ -140,3 +175,44 @@ fix f x =
   if x == x' then x else fix f x'
   where
     x' = f x
+
+-- if choises has empty value somewhere
+void :: Matrix Choises -> Bool
+void = any (any null)
+
+-- the matrix has rows, columns, and boxes are consistent
+safe :: Matrix Choises -> Bool
+safe m =
+  all consistent (rows m)
+    && all consistent (cols m)
+    && all consistent (boxes m)
+
+-- No duplicated single value
+-- Hutton's implementation:
+--   consistent = nodups . concat . filter single
+consistent :: Row Choises -> Bool
+consistent xs = nodups singles
+  where
+    singles = map (\[x] -> x) (filter (\x -> length x == 1) xs)
+
+-- Check if Matrix is not a correct solution
+blocked :: Matrix Choises -> Bool
+blocked m = void m || not (safe m)
+
+search :: Matrix Choises -> [Grid]
+search m
+  | blocked m = []
+  | all (all single) m = explode m -- list of a single solution
+  | otherwise = [g | m' <- expand m, g <- search (prune m')]
+
+-- Expand only the first cell which hase more than one choise -- TO EXPLAIN
+expand :: Matrix Choises -> [Matrix Choises]
+expand m = [rows1 ++ [row1 ++ [c] : row2] ++ rows2 | c <- cs]
+  where
+    (rows1, row : rows2) = span (all single) m
+    (row1, cs : row2) = span single row
+
+-- Check if it is a single char.
+single :: [a] -> Bool
+single [_] = True
+single _ = False
